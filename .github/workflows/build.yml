@@ -104,9 +104,13 @@ jobs:
           release_name: Release v${{ steps.extract_version.outputs.version }}
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload JAR
         run: |
           mvn clean package
           echo "Uploading artifact..."
           gh release upload v${{ steps.extract_version.outputs.version }} target/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
