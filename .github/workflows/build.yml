@@ -67,7 +67,7 @@ jobs:
           mvn clean install
           
       - name: Build
-        run: mvn -B
+        run: mvn clean package -B
 
   release:
     name: Create Release
