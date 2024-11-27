@@ -73,6 +73,11 @@ jobs:
           mvn clean install
       - name: Build
         run: mvn clean package -B
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: APIServer
+          path: target/*.jar
 
   release:
     name: Create Release
@@ -97,6 +102,11 @@ jobs:
           version=$(xmllint --xpath "/*[local-name()='project']/*[local-name()='version']/text()" pom.xml)
           echo "::set-output name=version::$version"
 
+      - name: Download artifact
+        uses: actions/download-artifact@v4.4.3
+        with:
+          name: APIServer
+      
       - name: Create Release
         uses: actions/create-release@v1
         with:
