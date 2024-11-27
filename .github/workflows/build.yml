@@ -106,6 +106,7 @@ jobs:
         uses: actions/upload-artifact@v4.4.3
         with:
           name: APIServer
+          path: target/*.jar
       
       - name: Create Release
         uses: actions/create-release@v1
