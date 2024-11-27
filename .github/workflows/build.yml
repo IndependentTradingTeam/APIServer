@@ -65,13 +65,19 @@ jobs:
           git clone https://github.com/MatteoBax/MavenUtility
           cd MavenUtility
           mvn clean install
-          
+
+      - name: Clone and Build HTTPServer
+        run: |
+          git clone https://github.com/MatteoBax/HTTPServer
+          cd HTTPServer
+          mvn clean install
       - name: Build
         run: mvn clean package -B
 
   release:
     name: Create Release
     runs-on: ubuntu-latest
+    needs: build
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
