@@ -28,10 +28,6 @@ jobs:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2
-
-      - name: Set up Maven environment
-        run: |
-          echo "PATH=$PATH:~/.m2/bin" >> $GITHUB_ENV
       
       - name: Clone Java-FastCGI-Client
         run: |
@@ -84,6 +80,12 @@ jobs:
           name: APIServer
           path: target/*.jar
 
+      - name: Save Maven repository for release job
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: MavenRepository
+          path: ~/.m2/repository
+
   release:
     name: Create Release
     runs-on: ubuntu-latest
@@ -111,6 +113,16 @@ jobs:
         uses: actions/download-artifact@v4.1.8
         with:
           name: APIServer
+
+      - name: Download maven repository
+        uses: actions/download-artifact@v4.1.8
+        with:
+          name: MavenRepository
+          
+      - name: Restore Maven repository
+        run: |
+          mkdir -p ~/.m2
+          mv repository ~/.m2/repository
       
       - name: Create Release
         uses: actions/create-release@v1
