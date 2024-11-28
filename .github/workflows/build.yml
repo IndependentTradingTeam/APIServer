@@ -118,7 +118,10 @@ jobs:
         uses: actions/download-artifact@v4.1.8
         with:
           name: MavenRepository
-          
+
+      - name: List files
+        run: |
+          ls ~/.m2
       - name: Restore Maven repository
         run: |
           mkdir -p ~/.m2
