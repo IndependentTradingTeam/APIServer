@@ -121,7 +121,7 @@ jobs:
 
       - name: List files
         run: |
-          ls ~/
+          ls -R .
       - name: Restore Maven repository
         run: |
           mkdir -p ~/.m2
