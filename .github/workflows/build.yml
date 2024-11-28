@@ -84,7 +84,7 @@ jobs:
         uses: actions/upload-artifact@v4.4.3
         with:
           name: MavenRepository
-          path: ~/.m2/
+          path: ~/.m2/*
 
   release:
     name: Create Release
