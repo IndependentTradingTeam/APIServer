@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    name: Build and analyze
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,10 +103,9 @@ jobs:
           echo "::set-output name=version::$version"
 
       - name: Download artifact
-        uses: actions/upload-artifact@v4.4.3
+        uses: actions/download-artifact@v4.1.8
         with:
           name: APIServer
-          path: target/*.jar
       
       - name: Create Release
         uses: actions/create-release@v1
