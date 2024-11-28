@@ -118,15 +118,17 @@ jobs:
         uses: actions/download-artifact@v4.1.8
         with:
           name: MavenRepository
+          path:  ~/.m2/repository
 
       - name: List files
         run: |
           ls -R .
-      - name: Restore Maven repository
-        run: |
-          mkdir -p ~/.m2
-          mv repository ~/.m2/repository
       
+      #- name: Restore Maven repository
+      #  run: |
+      #    mkdir -p ~/.m2
+      #    mv repository ~/.m2/repository
+            
       - name: Create Release
         uses: actions/create-release@v1
         with:
