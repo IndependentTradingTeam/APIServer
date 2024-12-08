@@ -44,6 +44,16 @@ jobs:
           wget https://github.com/MatteoBax/JavaFetch/releases/download/v${{ steps.extract_version.outputs.javafetch_version }}/JavaFetch-${{ steps.extract_version.outputs.javafetch_version }}.jar -O JavaFetch-${{ steps.extract_version.outputs.javafetch_version }}.jar
           ls -lh JavaFetch-${{ steps.extract_version.outputs.javafetch_version }}.jar
       
+      - name: Install JavaFetch JAR to Maven repository
+        run: |
+          mvn install:install-file \
+            -Dfile=JavaFetch-${{ steps.extract_version.outputs.javafetch_version }}.jar \
+            -DgroupId=com.matteo \
+            -DartifactId=JavaFetch \
+            -Dversion=${{ steps.extract_version.outputs.javafetch_version }} \
+            -Dpackaging=jar \
+            -DlocalRepositoryPath=~/.m2/repository
+      
       - name: Clone Java-FastCGI-Client
         run: |
           git clone https://github.com/wuyunfeng/Java-FastCGI-Client.git
