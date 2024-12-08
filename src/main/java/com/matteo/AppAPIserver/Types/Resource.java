@@ -1,5 +1,6 @@
 package com.matteo.AppAPIserver.Types;
 
+
 public class Resource {
 	private int ID;
 	private String Symbol;
@@ -22,4 +23,5 @@ public class Resource {
 	public String getName() {
 		return this.Name;
 	}
+	
 }

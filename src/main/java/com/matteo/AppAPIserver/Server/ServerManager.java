@@ -12,20 +12,31 @@ import java.time.LocalDate;
 import java.time.Period;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Vector;
 
 import org.springframework.security.crypto.bcrypt.BCrypt;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 import com.matteo.AppAPIserver.Database.Database;
 import com.matteo.AppAPIserver.Tools.Tools;
+import com.matteo.AppAPIserver.Tools.ThreadPool.ThreadPool;
 import com.matteo.AppAPIserver.Types.Exchange;
 import com.matteo.AppAPIserver.Types.Resource;
+import com.matteo.AppAPIserver.Types.ResourceValues;
 import com.matteo.AppAPIserver.Types.User;
 import com.matteo.HTTPServer.server.Server;
 import com.matteo.HTTPServer.server.Session;
 import com.matteo.HTTPServer.server.SessionVariable;
+import com.matteo.JavaFetch.JavaFetch;
+import com.matteo.JavaFetch.RequestParam;
+import com.matteo.JavaFetch.Tools.Buffer;
 
 public class ServerManager {
-	Server server;
+	private final String API_KEY = "ct8o3o1r01qtkv5spih0ct8o3o1r01qtkv5spihg";
+	private Server server;
 	
 	public ServerManager() throws IOException {
 		server = new Server();
@@ -310,6 +321,52 @@ public class ServerManager {
 			}
 		});
 		
+		server.get("/api/getResourceValues", (req, res) -> {
+			String symbol = req.getRequestParamValue("symbol");
+			if(symbol != null) {
+				RequestParam[] params = new RequestParam[] {
+					new RequestParam("symbol", symbol),
+					new RequestParam("token", API_KEY)
+				};
+
+				new JavaFetch("https://finnhub.io/api/v1/quote", "GET", params).then((response) -> {
+					JsonObject jsonObject = null;
+					try {
+						jsonObject = JsonParser.parseString(response.bodyAsString()).getAsJsonObject();
+					} catch (JsonParseException e) {
+						res.status(500).send("I dati ottenuti dall'API esterna sono invalidi");
+						return;
+					}
+					
+					if(jsonObject.has("c") && jsonObject.has("d") && jsonObject.has("dp") && jsonObject.has("h") && jsonObject.has("l") && jsonObject.has("o") && jsonObject.has("pc")) {
+						BigDecimal current, change, percentChange, hight, low, open, previousClose;
+						try {
+							current = jsonObject.get("c").isJsonNull() ? null : jsonObject.get("c").getAsBigDecimal();
+							change = jsonObject.get("d").isJsonNull() ? null : jsonObject.get("d").getAsBigDecimal();
+							percentChange = jsonObject.get("dp").isJsonNull() ? null : jsonObject.get("dp").getAsBigDecimal();
+							hight = jsonObject.get("h").isJsonNull() ? null : jsonObject.get("h").getAsBigDecimal();
+							low = jsonObject.get("l").isJsonNull() ? null : jsonObject.get("l").getAsBigDecimal();
+							open = jsonObject.get("o").isJsonNull() ? null : jsonObject.get("o").getAsBigDecimal();
+							previousClose = jsonObject.get("pc").isJsonNull() ? null : jsonObject.get("pc").getAsBigDecimal();
+						} catch (NumberFormatException e) {
+							res.status(500).send("I dati ottenuti dall'API esterna sono invalidi");
+							return;
+						}
+						
+						ResourceValues resourceValues = new ResourceValues(current, change, percentChange, hight, low, open, previousClose);
+						res.send(resourceValues);
+					} else {
+						res.status(500).send("I dati ottenuti dall'API esterna sono invalidi");
+					}
+				}).onException((e) -> {
+					res.status(500).send("Si è verificato un errrore durante l'ottenimento dei dati dall'API esterna");
+				});
+
+			} else {
+				res.status(400).send("Parametro symbol assente");
+			}
+		});
+		
 		server.get("/api/getResources", (req, res) -> {
 			String MIC = req.getRequestParamValue("MIC");
 			if(MIC != null) {
@@ -331,7 +388,10 @@ public class ServerManager {
 					if(rs.next()) {
 						ArrayList<Resource> exchanges = new ArrayList<Resource>();
 						do {
-							exchanges.add(new Resource(rs.getInt(1), rs.getString(2), rs.getString(3)));
+							int ID = rs.getInt(1);
+							String symbol =  rs.getString(2);
+							String name =  rs.getString(3);
+							exchanges.add(new Resource(ID, symbol, name));
 						} while (rs.next());
 						res.status(200).send(exchanges);
 					} else {
