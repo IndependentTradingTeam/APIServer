@@ -52,7 +52,7 @@ jobs:
             -DartifactId=JavaFetch \
             -Dversion=${{ steps.extract_version.outputs.javafetch_version }} \
             -Dpackaging=jar \
-            -DlocalRepositoryPath=~/.m2/repository
+            -DlocalRepositoryPath=/home/runner/.m2/repository
       
       - name: Clone Java-FastCGI-Client
         run: |
