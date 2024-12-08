@@ -142,7 +142,7 @@ jobs:
       - name: Upload JAR
         run: |
           mvn package
-          rm original-*.jar
+          rm -f original-*.jar
           echo "Uploading artifact..."
           gh release upload v${{ steps.extract_version.outputs.version }} target/*.jar
         env:
