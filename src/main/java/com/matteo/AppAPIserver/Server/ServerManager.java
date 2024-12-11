@@ -36,15 +36,160 @@ import com.matteo.JavaFetch.Tools.Buffer;
 
 public class ServerManager {
 	private final String API_KEY = "ct8o3o1r01qtkv5spih0ct8o3o1r01qtkv5spihg";
+	private final String API_SERVER_PATH;
 	private Server server;
 	
 	public ServerManager() throws IOException {
 		server = new Server();
 		server.startServer();
+		API_SERVER_PATH = "http://localhost:" + server.serverConfig.getHTTP_Port();
 		registerAPI();
 	}
 	
-	public void registerAPI() {
+	private boolean updateBalance(int userID, BigDecimal toSubstractOrAdd) {
+		Connection conn = null;
+		PreparedStatement stmt = null;
+		char sign = toSubstractOrAdd.compareTo(BigDecimal.ZERO) >= 0 ? '-' : '+';
+		try {
+			conn = Database.connect();
+			stmt = conn.prepareStatement("UPDATE Utenti SET Conto=Conto" + sign + toSubstractOrAdd.toString() + " WHERE ID = ?;");
+			stmt.setInt(1, userID);
+			stmt.executeUpdate();
+			return true;
+		} catch (SQLException e) {
+			
+		} finally {
+			Database.closeConnection(conn, stmt);
+		}
+		return false;
+	}
+
+	private Integer registerOrUpdateAction(int userID, int resourceID, BigDecimal quantita) {
+		Connection conn = null;
+		PreparedStatement stmt = null;
+		ResultSet rs = null;
+		int actionID = 0;
+		Integer toReturn = null;
+		try {
+			conn = Database.connect();
+			stmt = conn.prepareStatement("SELECT ID FROM Azioni WHERE ID_Utente = ? AND ID_Risorsa = ?;");
+			stmt.setInt(1, userID);
+			stmt.setInt(2, resourceID);
+			rs = stmt.executeQuery();
+			if(rs.next()) {
+				actionID = rs.getInt(1);
+				rs.close();
+				stmt.close();
+
+				stmt = conn.prepareStatement("UPDATE Azioni SET Quantità = Quantità + ? WHERE ID = ?;", Statement.RETURN_GENERATED_KEYS);
+				stmt.setBigDecimal(1, quantita);
+				stmt.setInt(2, actionID);
+			} else {
+				rs.close();
+				stmt.close();
+
+				stmt = conn.prepareStatement("INSERT INTO Azioni(Quantità, ID_Utente, ID_Risorsa) VALUES(?, ?, ?);", Statement.RETURN_GENERATED_KEYS);
+				stmt.setBigDecimal(1, quantita);
+				stmt.setInt(2, userID);
+				stmt.setInt(3, resourceID);
+			}
+
+			stmt.executeUpdate();
+			rs = stmt.getGeneratedKeys(); // nn worka
+			if(rs.next()) {
+				toReturn = rs.getInt(1);
+			} else {
+				System.err.println("no next");
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		} finally {
+			Database.closeConnection(conn, stmt, rs);
+		}
+
+		return toReturn;
+	}
+
+	private void deleteAction(int actionID) {
+		do{
+			Connection conn = null;
+			PreparedStatement stmt = null;
+			try {
+				conn = Database.connect();
+				stmt = conn.prepareStatement("DELETE FROM Azioni WHERE ID = ?;");
+				stmt.setInt(1, actionID);
+				stmt.executeUpdate();
+				break;
+			} catch (SQLException e) {
+
+			} finally {
+				Database.closeConnection(conn, stmt);
+			}
+		} while (true);
+	}
+
+	private BigDecimal getCurrentActionValue(int resourceID) throws SQLException {
+		Connection conn = null;
+		PreparedStatement stmt = null;
+		ResultSet rs = null;
+		String symbol = null;
+
+		Buffer<BigDecimal> buf = new Buffer<BigDecimal>();
+		try {
+			conn = Database.connect();
+			stmt = conn.prepareStatement("SELECT Symbol FROM Risorse WHERE ID = ?;");
+			stmt.setInt(1, resourceID);
+			rs = stmt.executeQuery();
+			if(rs.next()) {
+				symbol = rs.getString(1);
+			}
+		} catch (SQLException e) {
+			throw e;
+		} finally {
+			Database.closeConnection(conn, stmt, rs);
+		}
+
+		if(symbol != null) {
+			RequestParam[] params = new RequestParam[] {
+				new RequestParam("symbol", symbol)
+			};
+
+			new JavaFetch(API_SERVER_PATH + "/api/getResourceValues", "GET", params).then((response) -> {
+				ResourceValues values = (ResourceValues)response.bodyAsObject(ResourceValues.class);
+				buf.write(values.getCurrentPrice());
+			}).onException((e) -> {
+				buf.write(null);
+			});
+		} else {
+			buf.write(null);
+		}
+
+		return buf.read();
+	}
+
+	public BigDecimal getUserBalance(int userID) {
+		Connection conn = null;
+		PreparedStatement stmt = null;
+		ResultSet rs = null;
+		BigDecimal toRet = null;
+		try {
+			conn = Database.connect();
+			stmt = conn.prepareStatement("SELECT Conto FROM Utenti WHERE ID = ?;");
+			stmt.setInt(1, userID);
+			rs = stmt.executeQuery();
+			if(rs.next()) {
+				toRet = rs.getBigDecimal(1);
+			}
+		} catch (SQLException e) {
+
+		} finally {
+			Database.closeConnection(conn, stmt, rs);
+		}
+
+		return toRet;
+	}
+
+	private void registerAPI() {
 		server.post("/api/register", (req, res) -> {
 			final String formatoData = "dd/MM/yyyy";
 			
@@ -116,22 +261,7 @@ public class ServerManager {
 						} catch (SQLException e) {
 							res.status(500).send("Errore di inserimento");
 						} finally {
-							if(rs != null) {
-								try {
-									rs.close();
-								} catch (SQLException e) {}
-							}
-							if(stmt != null) {
-								try {
-									stmt.close();
-								} catch (SQLException e) {}
-							}
-							
-							if(conn != null) {
-								try {
-									conn.close();
-								} catch (SQLException e) {}
-							}
+							Database.closeConnection(conn, stmt, rs);
 						}
 					} else {
 						res.status(400).send("Devi essere maggiorenne per poterti registrare");
@@ -177,22 +307,7 @@ public class ServerManager {
 				} catch (SQLException e) {
 					res.status(500).send("Si è verificato un errore durante il recupero dei dati dal database");
 				} finally {
-					if(rs != null) {
-						try {
-							rs.close();
-						} catch (SQLException e) {}
-					}
-					if(stmt != null) {
-						try {
-							stmt.close();
-						} catch (SQLException e) {}
-					}
-					
-					if(conn != null) {
-						try {
-							conn.close();
-						} catch (SQLException e) {}
-					}
+					Database.closeConnection(conn, stmt, rs);
 				}
 			} else {
 				res.status(401).send("Non è stato ancora effettuato il login");
@@ -251,22 +366,7 @@ public class ServerManager {
 						} catch (SQLException e) {
 							res.status(500).send("Si è verificato un errore durante il recupero dei dati dal database");
 						} finally {
-							if(rs != null) {
-								try {
-									rs.close();
-								} catch (SQLException e) {}
-							}
-							if(stmt != null) {
-								try {
-									stmt.close();
-								} catch (SQLException e) {}
-							}
-							
-							if(conn != null) {
-								try {
-									conn.close();
-								} catch (SQLException e) {}
-							}
+							Database.closeConnection(conn, stmt, rs);
 						}
 					}
 				} else {
@@ -302,22 +402,7 @@ public class ServerManager {
 			} catch (SQLException e) {
 				res.status(500).send("Si è verificato un errore durante il recupero dei dati dal database");
 			} finally {
-				if(rs != null) {
-					try {
-						rs.close();
-					} catch (SQLException e) {}
-				}
-				if(stmt != null) {
-					try {
-						stmt.close();
-					} catch (SQLException e) {}
-				}
-				
-				if(conn != null) {
-					try {
-						conn.close();
-					} catch (SQLException e) {}
-				}
+				Database.closeConnection(conn, stmt, rs);
 			}
 		});
 		
@@ -400,22 +485,7 @@ public class ServerManager {
 				} catch (SQLException e) {
 					res.status(500).send("Si è verificato un errore durante il recupero dei dati dal database");
 				} finally {
-					if(rs != null) {
-						try {
-							rs.close();
-						} catch (SQLException e) {}
-					}
-					if(stmt != null) {
-						try {
-							stmt.close();
-						} catch (SQLException e) {}
-					}
-					
-					if(conn != null) {
-						try {
-							conn.close();
-						} catch (SQLException e) {}
-					}
+					Database.closeConnection(conn, stmt, rs);
 				}
 			} else {
 				res.status(400).send("Parametro MIC assente");
@@ -424,9 +494,11 @@ public class ServerManager {
 		
 		server.post("/api/buyAction", (req, res) -> {
 			Session session = req.getSession();
+			session.start();
 			session.disableExpiry();
-			SessionVariable userID = session.getSessionVariable("userID");
-			if(userID != null) {
+			SessionVariable userIDVar = session.getSessionVariable("userID");
+			if(userIDVar != null) {
+				int userID = (Integer)userIDVar.getValue();
 				String resourceIDstr = req.getRequestParamValue("resourceID");
 				String quantitaStr = req.getRequestParamValue("quantity");
 				if(resourceIDstr != null && quantitaStr != null) {
@@ -450,30 +522,114 @@ public class ServerManager {
 						res.status(400).send("Il parametro quantity deve essere positivo");;
 						return;
 					}
-					
-					Connection conn = null;
-					PreparedStatement stmt = null;
-					ResultSet rs = null;
-					
+					BigDecimal valoreUnitario = null;
 					try {
-						conn = Database.connect();
+						valoreUnitario =  getCurrentActionValue(resourceID);
 					} catch (SQLException e) {
-						res.status(500).send("Errore di connessione al database");
+						res.status(500).send("Errore interno al database");
 						return;
 					}
-					
-					try {
-						// TODO aggiugere all'azione esistete o crearla da 0 (come stabilisco ValoreUnitarioAcquisto???)
-						stmt = conn.prepareStatement("");
-					} catch (SQLException e) {
-						return;
+
+					if(valoreUnitario != null) {					
+						BigDecimal daSottrarre = valoreUnitario.multiply(quantita); // valore da sottrarre al conto
+						BigDecimal conto = getUserBalance(userID);
+						System.out.println("TI SERVE : " + daSottrarre);
+						System.out.println("CONTO: " + conto);
+						if(conto != null && conto.subtract(daSottrarre).compareTo(BigDecimal.ZERO) >= 0) {
+							Integer actionID = registerOrUpdateAction(userID, resourceID, quantita);
+							if(actionID != null) {
+								if(updateBalance(userID, daSottrarre)) {
+									res.status(200).send("Azione acquistata correttamente");
+								} else {
+									deleteAction(actionID);
+									res.status(500).send("Si è verificato un errore durante l'aggiornamento del conto");
+								}
+							} else {
+								res.status(500).send("Si è verificato un errore durante il tentativo di comprare l'azione");
+							}
+						} else {
+							res.status(400).send("Il conto non è sufficiente"); // TODO trovare un codice di errore opportuno
+						}
+					} else {
+						res.status(400).send("La risorsa è inesistente!");
 					}
-					
 				} else {
 					res.status(400).send("Dati assenti");
 				}
 			} else {
 				res.status(401).send("Non è stato ancora effettuato il login");
+			}
+		});
+
+
+		server.post("/api/deposit", (req, res) -> {
+			Session session = req.getSession();
+			session.start();
+			session.disableExpiry();
+			String toDepositStr = req.getRequestParamValue("money");
+			if(toDepositStr != null) {
+				SessionVariable userIDStr = session.getSessionVariable("userID");
+				if(userIDStr != null) {
+					int userID = (Integer)userIDStr.getValue();
+					BigDecimal toDeposit = null;
+
+					try {
+						toDeposit = new BigDecimal(toDepositStr);
+					} catch (NumberFormatException e) {}
+
+					if(toDeposit != null && toDeposit.scale() == 2 && toDeposit.compareTo(BigDecimal.ZERO) > 0) {
+						if(updateBalance(userID, toDeposit)) {
+							res.status(200).send("Conto aggiornato correttamente");
+						} else {
+							res.status(500).send("Si è verificato un errore durante l'aggiornamento del conto");
+						}
+					} else {
+						res.status(400).send("Il parametro money non ha un valore valido");
+					}
+				} else {
+					res.status(403).send("Devi effettuare il login");
+				}
+			} else {
+				res.status(400).send("Parametro money assente");
+			}
+		});
+
+		server.post("/api/withdraw", (req, res) -> {
+			Session session = req.getSession();
+			session.start();
+			session.disableExpiry();
+			String toWithdrawStr = req.getRequestParamValue("money");
+			SessionVariable userIDVar = session.getSessionVariable("userID");
+			if(userIDVar != null) {
+				int userID = (Integer)userIDVar.getValue();
+				if(toWithdrawStr != null) {
+					BigDecimal toWithdraw = null;
+					try {
+						toWithdraw = new BigDecimal(toWithdrawStr);
+					} catch (NumberFormatException e) {}
+					if(toWithdraw != null && toWithdraw.scale() == 2 && toWithdraw.compareTo(BigDecimal.ZERO) > 0) {
+						BigDecimal balance = getUserBalance(userID);
+						if(balance != null) {
+							if(balance.compareTo(toWithdraw) >= 0) {
+								if(updateBalance(userID, toWithdraw.multiply(new BigDecimal(-1)))) {
+									res.status(200).send("Prelievo effettuato correttamente");
+								} else {
+									res.status(500).send("Si è verificato un errore durante il prelievo dal conto");
+								}
+							} else {
+								res.status(400).send("Non sono presenti abbastanza soldi nel conto per completare l'operazione");
+							}
+						} else {
+							res.status(500).send("Si è verificato un errore interno al database");
+						}
+					} else {
+						res.status(400).send("Il parametro money non ha un valore valido");
+					}
+				} else {
+					res.status(400).send("Parametro money assente");
+				}
+			} else {
+				res.status(403).send("Devi effettuare il login");
 			}
 		});
 	}
