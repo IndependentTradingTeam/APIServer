@@ -8,7 +8,6 @@
 	<groupId>com.matteo</groupId>
 	<artifactId>AppAPIserver</artifactId>
 	<version>1.0.1</version>
-
 	<name>AppAPIserver</name>
 	<description>A simple AppAPIserver.</description>
 	<!-- FIXME change it to the project's website -->
