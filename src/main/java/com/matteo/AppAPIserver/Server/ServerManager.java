@@ -557,7 +557,7 @@ public class ServerManager {
 					res.status(400).send("Dati assenti");
 				}
 			} else {
-				res.status(401).send("Non è stato ancora effettuato il login");
+				res.status(403).send("Non è stato ancora effettuato il login");
 			}
 		});
 
