@@ -8,12 +8,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.Period;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Vector;
 
 import org.springframework.security.crypto.bcrypt.BCrypt;
 
@@ -22,7 +24,7 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.matteo.AppAPIserver.Database.Database;
 import com.matteo.AppAPIserver.Tools.Tools;
-import com.matteo.AppAPIserver.Tools.ThreadPool.ThreadPool;
+import com.matteo.AppAPIserver.Types.Action;
 import com.matteo.AppAPIserver.Types.Exchange;
 import com.matteo.AppAPIserver.Types.Resource;
 import com.matteo.AppAPIserver.Types.ResourceValues;
@@ -49,7 +51,7 @@ public class ServerManager {
 	private boolean updateBalance(int userID, BigDecimal toSubstractOrAdd) {
 		Connection conn = null;
 		PreparedStatement stmt = null;
-		char sign = toSubstractOrAdd.compareTo(BigDecimal.ZERO) >= 0 ? '-' : '+';
+		char sign = toSubstractOrAdd.compareTo(BigDecimal.ZERO) >= 0 ? '+' : ' ';
 		try {
 			conn = Database.connect();
 			stmt = conn.prepareStatement("UPDATE Utenti SET Conto=Conto" + sign + toSubstractOrAdd.toString() + " WHERE ID = ?;");
@@ -95,11 +97,9 @@ public class ServerManager {
 			}
 
 			stmt.executeUpdate();
-			rs = stmt.getGeneratedKeys(); // nn worka
+			rs = stmt.getGeneratedKeys();
 			if(rs.next()) {
 				toReturn = rs.getInt(1);
-			} else {
-				System.err.println("no next");
 			}
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -538,7 +538,7 @@ public class ServerManager {
 						if(conto != null && conto.subtract(daSottrarre).compareTo(BigDecimal.ZERO) >= 0) {
 							Integer actionID = registerOrUpdateAction(userID, resourceID, quantita);
 							if(actionID != null) {
-								if(updateBalance(userID, daSottrarre)) {
+								if(updateBalance(userID, daSottrarre.multiply(new BigDecimal(-1)))) {
 									res.status(200).send("Azione acquistata correttamente");
 								} else {
 									deleteAction(actionID);
@@ -561,6 +561,55 @@ public class ServerManager {
 			}
 		});
 
+		server.get("/api/getBuyedActions", (req, res) -> {
+			Session session = req.getSession();
+			session.start();
+			session.disableExpiry();
+			SessionVariable userIDVar = session.getSessionVariable("userID");
+			if(userIDVar != null) {
+				int userID = (Integer)userIDVar.getValue();
+				Connection conn = null;
+				PreparedStatement stmt = null;
+				ResultSet rs = null;
+				ArrayList<Action> actions = new ArrayList<Action>();
+				try {
+					conn = Database.connect();
+					stmt = conn.prepareStatement("SELECT Azioni.ID, ID_Risorsa, Risorse.Symbol, Quantità, DataOraAcquisto, DataOraFine FROM Azioni JOIN Risorse ON Azioni.ID_Risorsa = Risorse.ID WHERE ID_Utente = ?;");
+					stmt.setInt(1, userID);
+					rs = stmt.executeQuery();
+					ZoneId zoneId = ZoneId.systemDefault();
+					while(rs.next()) {
+						int idAzione = rs.getInt(1);
+						int idRisorsa = rs.getInt(2);
+						String symbol = rs.getString(3);
+						BigDecimal quantità = rs.getBigDecimal(4);
+						Timestamp DataOraAcquisto = rs.getTimestamp(5);
+						Timestamp DataOraFine = rs.getTimestamp(6);
+
+						// Converto i TimeStamp in LocalDate e LocalTime
+						Instant instant = DataOraAcquisto.toInstant();
+						LocalDate dataAcquisto = instant.atZone(zoneId).toLocalDate();
+						LocalTime oraAcquisto = instant.atZone(zoneId).toLocalTime();
+
+						LocalDate dataFine = null;
+						LocalTime oraFine = null;
+						if(DataOraFine != null) {
+							instant = DataOraFine.toInstant();
+							dataFine = instant.atZone(zoneId).toLocalDate();
+							oraFine = instant.atZone(zoneId).toLocalTime();
+						}
+						actions.add(new Action(idAzione, idRisorsa, symbol, quantità, dataAcquisto, oraAcquisto, dataFine, oraFine));
+					}
+					res.status(200).send(actions);
+				} catch (SQLException e) {
+					res.status(500).send("Si è verificato un errore interno al database");
+				} finally {
+					Database.closeConnection(conn, stmt, rs);
+				}
+			} else {
+				res.status(403).send("Non è stato ancora effettuato il login");
+			}
+		});
 
 		server.post("/api/deposit", (req, res) -> {
 			Session session = req.getSession();
