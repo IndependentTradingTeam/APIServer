@@ -66,15 +66,16 @@ public class ServerManager {
 		return false;
 	}
 
-	private Integer registerOrUpdateAction(int userID, int resourceID, BigDecimal quantita) {
+	private Integer registerOrUpdateAction(int userID, int resourceID, BigDecimal quantita, boolean selling) {
 		Connection conn = null;
 		PreparedStatement stmt = null;
 		ResultSet rs = null;
 		int actionID = 0;
 		Integer toReturn = null;
+		boolean isQuerySetted = false;
 		try {
 			conn = Database.connect();
-			stmt = conn.prepareStatement("SELECT ID FROM Azioni WHERE ID_Utente = ? AND ID_Risorsa = ?;");
+			stmt = conn.prepareStatement("SELECT ID FROM Azioni WHERE ID_Utente = ? AND ID_Risorsa = ? AND DataOraFine IS NULL;");
 			stmt.setInt(1, userID);
 			stmt.setInt(2, resourceID);
 			rs = stmt.executeQuery();
@@ -82,32 +83,48 @@ public class ServerManager {
 				actionID = rs.getInt(1);
 				rs.close();
 				stmt.close();
-
-				stmt = conn.prepareStatement("UPDATE Azioni SET Quantità = Quantità + ? WHERE ID = ?;", Statement.RETURN_GENERATED_KEYS);
+				char sign = quantita.compareTo(BigDecimal.ZERO) >= 0 ? '+' : ' '; 
+				System.out.println("QUANTITA: " + quantita);
+				System.out.println(sign);
+				stmt = conn.prepareStatement("UPDATE Azioni SET Quantità = Quantità " + sign + " ? WHERE ID = ?;", Statement.RETURN_GENERATED_KEYS);
 				stmt.setBigDecimal(1, quantita);
 				stmt.setInt(2, actionID);
+				isQuerySetted = true;
+				System.out.println("Found action");
+				toReturn = actionID;
 			} else {
 				rs.close();
 				stmt.close();
-
-				stmt = conn.prepareStatement("INSERT INTO Azioni(Quantità, ID_Utente, ID_Risorsa) VALUES(?, ?, ?);", Statement.RETURN_GENERATED_KEYS);
-				stmt.setBigDecimal(1, quantita);
-				stmt.setInt(2, userID);
-				stmt.setInt(3, resourceID);
+				if(!selling) {
+					stmt = conn.prepareStatement("INSERT INTO Azioni(Quantità, ID_Utente, ID_Risorsa) VALUES(?, ?, ?);", Statement.RETURN_GENERATED_KEYS);
+					stmt.setBigDecimal(1, quantita);
+					stmt.setInt(2, userID);
+					stmt.setInt(3, resourceID);
+					isQuerySetted = true;
+				}
 			}
 
-			stmt.executeUpdate();
-			rs = stmt.getGeneratedKeys();
-			if(rs.next()) {
-				toReturn = rs.getInt(1);
+			if(isQuerySetted) {
+				stmt.executeUpdate();
+				rs = stmt.getGeneratedKeys();
+				if(rs.next()) {
+					toReturn = rs.getInt(1);
+				} else {
+					System.out.println("NO NEXT");
+				}
 			}
 		} catch (SQLException e) {
 			e.printStackTrace();
+			toReturn = null;
 		} finally {
 			Database.closeConnection(conn, stmt, rs);
 		}
 
 		return toReturn;
+	}
+
+	private Integer registerOrUpdateAction(int userID, int resourceID, BigDecimal quantita) {
+		return registerOrUpdateAction(userID, resourceID, quantita, false);
 	}
 
 	private void deleteAction(int actionID) {
@@ -127,6 +144,8 @@ public class ServerManager {
 			}
 		} while (true);
 	}
+
+
 
 	private BigDecimal getCurrentActionValue(int resourceID) throws SQLException {
 		Connection conn = null;
@@ -556,6 +575,93 @@ public class ServerManager {
 				} else {
 					res.status(400).send("Dati assenti");
 				}
+			} else {
+				res.status(403).send("Non è stato ancora effettuato il login");
+			}
+		});
+
+		server.post("/api/sellAction", (req, res) -> {
+			Session session = req.getSession();
+			session.start();
+			session.disableExpiry();
+			SessionVariable userIDVar = session.getSessionVariable("userID");
+			if(userIDVar != null) {
+				int userID = (Integer)userIDVar.getValue();
+				String resourceIDstr = req.getRequestParamValue("resourceID");
+				String quantitaStr = req.getRequestParamValue("D");
+				if(resourceIDstr != null && quantitaStr != null) {
+					int resourceID = -1;
+					try {
+						resourceID = Integer.parseInt(resourceIDstr);
+					} catch (NumberFormatException e) {
+						res.status(400).send("Parametro resourceID invalido");
+						return;
+					}
+
+					BigDecimal quantita = null;
+					try {
+						quantita = new BigDecimal(quantitaStr);
+					} catch (NumberFormatException e) {
+						res.status(400).send("Il parametro quantity non è un BigDecimal");
+						return;
+					}
+
+					// Controllo che l'utente abbia comprato l'azione specificata tramite id risorsa
+					BigDecimal quantityOnDB = null;
+					Connection conn = null;
+					PreparedStatement stmt = null;
+					ResultSet rs = null;
+					try {
+						conn = Database.connect();
+						stmt = conn.prepareStatement("SELECT Quantità FROM Azioni JOIN Risorse ON Azioni.ID_Risorsa = Risorse.ID WHERE ID_Utente = ? AND DataOraFine IS NULL AND Azioni.ID_Risorsa = ?;");
+						stmt.setInt(1, userID);
+						stmt.setInt(2, resourceID);
+						rs = stmt.executeQuery();
+						if(rs.next()) {
+							quantityOnDB = rs.getBigDecimal(1);
+						} else {
+							res.status(404).send("L'utente non ha comprato nessun'azione relativa alla risorsa specificata");
+							return;
+						}
+					} catch (SQLException e) {
+						res.status(500).send("Errore interno al database");
+						return;
+					} finally {
+						Database.closeConnection(conn, stmt, rs);
+					}
+
+					if(quantita.compareTo(BigDecimal.ZERO) > 0 && quantita.compareTo(quantityOnDB) <= 0) {
+						BigDecimal currentActionValue = null;
+						try {
+							currentActionValue = getCurrentActionValue(resourceID);
+						} catch (SQLException e) {
+							res.status(500).send("Si è verificato un errore interno al database");
+							return;
+						}
+
+						if(currentActionValue != null) {
+							// Aggiorno il conto
+							BigDecimal gain = currentActionValue.multiply(quantita);
+							if(updateBalance(userID, gain)) {
+								if(registerOrUpdateAction(userID, resourceID, quantita.multiply(new BigDecimal(-1)), true) != null) {
+									res.status(200).send("Azione venduta correttamente");
+								} else {
+									while(!updateBalance(userID, gain.multiply(new BigDecimal(-1))));
+									res.status(500).send("Si è verificato un errore durante la vendita dell'azione");
+								}
+							} else {
+								res.status(500).send("Si è verificato un errore durante l'aggiornamento del saldo");
+							}
+						} else {
+							res.status(400).send("La risorsa è inesistente!");
+						}
+					} else {
+						res.status(400).send("La quantità specificata o è <= 0 oppure supera quella effettivamente acquistata");
+					}
+				} else {
+					res.status(400).send("Parametro assenti");
+				}
+
 			} else {
 				res.status(403).send("Non è stato ancora effettuato il login");
 			}
