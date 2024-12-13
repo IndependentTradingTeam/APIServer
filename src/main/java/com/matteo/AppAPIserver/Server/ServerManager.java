@@ -8,12 +8,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.Period;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Vector;
 
 import org.springframework.security.crypto.bcrypt.BCrypt;
 
@@ -22,7 +24,7 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.matteo.AppAPIserver.Database.Database;
 import com.matteo.AppAPIserver.Tools.Tools;
-import com.matteo.AppAPIserver.Tools.ThreadPool.ThreadPool;
+import com.matteo.AppAPIserver.Types.Action;
 import com.matteo.AppAPIserver.Types.Exchange;
 import com.matteo.AppAPIserver.Types.Resource;
 import com.matteo.AppAPIserver.Types.ResourceValues;
@@ -49,7 +51,7 @@ public class ServerManager {
 	private boolean updateBalance(int userID, BigDecimal toSubstractOrAdd) {
 		Connection conn = null;
 		PreparedStatement stmt = null;
-		char sign = toSubstractOrAdd.compareTo(BigDecimal.ZERO) >= 0 ? '-' : '+';
+		char sign = toSubstractOrAdd.compareTo(BigDecimal.ZERO) >= 0 ? '+' : ' ';
 		try {
 			conn = Database.connect();
 			stmt = conn.prepareStatement("UPDATE Utenti SET Conto=Conto" + sign + toSubstractOrAdd.toString() + " WHERE ID = ?;");
@@ -95,11 +97,9 @@ public class ServerManager {
 			}
 
 			stmt.executeUpdate();
-			rs = stmt.getGeneratedKeys(); // nn worka
+			rs = stmt.getGeneratedKeys();
 			if(rs.next()) {
 				toReturn = rs.getInt(1);
-			} else {
-				System.err.println("no next");
 			}
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -452,52 +452,6 @@ public class ServerManager {
 			}
 		});
 		
-		server.get("/api/getResourceValues", (req, res) -> {
-			String symbol = req.getRequestParamValue("symbol");
-			if(symbol != null) {
-				RequestParam[] params = new RequestParam[] {
-					new RequestParam("symbol", symbol),
-					new RequestParam("token", API_KEY)
-				};
-
-				new JavaFetch("https://finnhub.io/api/v1/quote", "GET", params).then((response) -> {
-					JsonObject jsonObject = null;
-					try {
-						jsonObject = JsonParser.parseString(response.bodyAsString()).getAsJsonObject();
-					} catch (JsonParseException e) {
-						res.status(500).send("I dati ottenuti dall'API esterna sono invalidi");
-						return;
-					}
-					
-					if(jsonObject.has("c") && jsonObject.has("d") && jsonObject.has("dp") && jsonObject.has("h") && jsonObject.has("l") && jsonObject.has("o") && jsonObject.has("pc")) {
-						BigDecimal current, change, percentChange, hight, low, open, previousClose;
-						try {
-							current = jsonObject.get("c").isJsonNull() ? null : jsonObject.get("c").getAsBigDecimal();
-							change = jsonObject.get("d").isJsonNull() ? null : jsonObject.get("d").getAsBigDecimal();
-							percentChange = jsonObject.get("dp").isJsonNull() ? null : jsonObject.get("dp").getAsBigDecimal();
-							hight = jsonObject.get("h").isJsonNull() ? null : jsonObject.get("h").getAsBigDecimal();
-							low = jsonObject.get("l").isJsonNull() ? null : jsonObject.get("l").getAsBigDecimal();
-							open = jsonObject.get("o").isJsonNull() ? null : jsonObject.get("o").getAsBigDecimal();
-							previousClose = jsonObject.get("pc").isJsonNull() ? null : jsonObject.get("pc").getAsBigDecimal();
-						} catch (NumberFormatException e) {
-							res.status(500).send("I dati ottenuti dall'API esterna sono invalidi");
-							return;
-						}
-						
-						ResourceValues resourceValues = new ResourceValues(current, change, percentChange, hight, low, open, previousClose);
-						res.send(resourceValues);
-					} else {
-						res.status(500).send("I dati ottenuti dall'API esterna sono invalidi");
-					}
-				}).onException((e) -> {
-					res.status(500).send("Si è verificato un errrore durante l'ottenimento dei dati dall'API esterna");
-				});
-
-			} else {
-				res.status(400).send("Parametro symbol assente");
-			}
-		});
-		
 		server.get("/api/getResources", (req, res) -> {
 			String MIC = req.getRequestParamValue("MIC");
 			if(MIC != null) {
@@ -584,7 +538,7 @@ public class ServerManager {
 						if(conto != null && conto.subtract(daSottrarre).compareTo(BigDecimal.ZERO) >= 0) {
 							Integer actionID = registerOrUpdateAction(userID, resourceID, quantita);
 							if(actionID != null) {
-								if(updateBalance(userID, daSottrarre)) {
+								if(updateBalance(userID, daSottrarre.multiply(new BigDecimal(-1)))) {
 									res.status(200).send("Azione acquistata correttamente");
 								} else {
 									deleteAction(actionID);
@@ -603,10 +557,59 @@ public class ServerManager {
 					res.status(400).send("Dati assenti");
 				}
 			} else {
-				res.status(401).send("Non è stato ancora effettuato il login");
+				res.status(403).send("Non è stato ancora effettuato il login");
 			}
 		});
 
+		server.get("/api/getBuyedActions", (req, res) -> {
+			Session session = req.getSession();
+			session.start();
+			session.disableExpiry();
+			SessionVariable userIDVar = session.getSessionVariable("userID");
+			if(userIDVar != null) {
+				int userID = (Integer)userIDVar.getValue();
+				Connection conn = null;
+				PreparedStatement stmt = null;
+				ResultSet rs = null;
+				ArrayList<Action> actions = new ArrayList<Action>();
+				try {
+					conn = Database.connect();
+					stmt = conn.prepareStatement("SELECT Azioni.ID, ID_Risorsa, Risorse.Symbol, Quantità, DataOraAcquisto, DataOraFine FROM Azioni JOIN Risorse ON Azioni.ID_Risorsa = Risorse.ID WHERE ID_Utente = ?;");
+					stmt.setInt(1, userID);
+					rs = stmt.executeQuery();
+					ZoneId zoneId = ZoneId.systemDefault();
+					while(rs.next()) {
+						int idAzione = rs.getInt(1);
+						int idRisorsa = rs.getInt(2);
+						String symbol = rs.getString(3);
+						BigDecimal quantità = rs.getBigDecimal(4);
+						Timestamp DataOraAcquisto = rs.getTimestamp(5);
+						Timestamp DataOraFine = rs.getTimestamp(6);
+
+						// Converto i TimeStamp in LocalDate e LocalTime
+						Instant instant = DataOraAcquisto.toInstant();
+						LocalDate dataAcquisto = instant.atZone(zoneId).toLocalDate();
+						LocalTime oraAcquisto = instant.atZone(zoneId).toLocalTime();
+
+						LocalDate dataFine = null;
+						LocalTime oraFine = null;
+						if(DataOraFine != null) {
+							instant = DataOraFine.toInstant();
+							dataFine = instant.atZone(zoneId).toLocalDate();
+							oraFine = instant.atZone(zoneId).toLocalTime();
+						}
+						actions.add(new Action(idAzione, idRisorsa, symbol, quantità, dataAcquisto, oraAcquisto, dataFine, oraFine));
+					}
+					res.status(200).send(actions);
+				} catch (SQLException e) {
+					res.status(500).send("Si è verificato un errore interno al database");
+				} finally {
+					Database.closeConnection(conn, stmt, rs);
+				}
+			} else {
+				res.status(403).send("Non è stato ancora effettuato il login");
+			}
+		});
 
 		server.post("/api/deposit", (req, res) -> {
 			Session session = req.getSession();

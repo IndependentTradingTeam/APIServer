@@ -2,20 +2,18 @@ package com.matteo.AppAPIserver.Types;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 
 public class User {
 	private String Name;
 	private String Surname;
-	private String DateOfBirth;
+	private LocalDate DateOfBirth;
 	private String Email;
 	private BigDecimal Balance;
 	
 	public User(String Name, String Surname, LocalDate DateOfBirth, String Email, BigDecimal Balance) {
 		this.Name = Name;
 		this.Surname = Surname;
-		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-		this.DateOfBirth = formatter.format(DateOfBirth).toString();
+		this.DateOfBirth = DateOfBirth;
 		this.Email = Email;
 		this.Balance = Balance;
 	}
@@ -28,7 +26,7 @@ public class User {
 		return this.Surname;
 	}
 	
-	public String getDateOfBirth() {
+	public LocalDate getDateOfBirth() {
 		return this.DateOfBirth;
 	}
 	
