@@ -95,7 +95,7 @@ jobs:
         run: |
           git clone https://github.com/MatteoBax/HTTPServer
           cd HTTPServer
-          mvn clean install -Pskip-javadoc-plugin
+          mvn clean install -Dmaven.javadoc.skip=true
       - name: Build
         run: mvn clean package -B
       - name: Upload artifact
