@@ -495,7 +495,7 @@ public class ServerManager {
 							int ID = rs.getInt(1);
 							String symbol =  rs.getString(2);
 							String name =  rs.getString(3);
-							exchanges.add(new Resource(ID, symbol, name));
+							exchanges.add(new Resource(ID, symbol, name, MIC));
 						} while (rs.next());
 						res.status(200).send(exchanges);
 					} else {
