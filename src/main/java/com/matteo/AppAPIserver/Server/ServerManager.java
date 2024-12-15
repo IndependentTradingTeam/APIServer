@@ -43,6 +43,7 @@ public class ServerManager {
 	
 	public ServerManager() throws IOException {
 		server = new Server();
+		server.disableCORS();
 		server.startServer();
 		API_SERVER_PATH = "http://localhost:" + server.serverConfig.getHTTP_Port();
 		registerAPI();
