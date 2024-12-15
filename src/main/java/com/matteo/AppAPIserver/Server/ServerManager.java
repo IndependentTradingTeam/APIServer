@@ -393,6 +393,11 @@ public class ServerManager {
 				}
 			}
 		});
+
+		server.get("/api/logout", (req, res) -> {
+			Session session = req.getSession();
+			session.destroy();
+		});
 		
 		server.get("/api/getExchanges", (req, res) -> {
 			Connection conn = null;
