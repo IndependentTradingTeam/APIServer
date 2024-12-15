@@ -7,7 +7,7 @@
 
 	<groupId>com.matteo</groupId>
 	<artifactId>AppAPIserver</artifactId>
-	<version>1.0.5</version>
+	<version>1.0.6</version>
 	<name>AppAPIserver</name>
 	<description>A simple AppAPIserver.</description>
 	<!-- FIXME change it to the project's website -->
@@ -34,7 +34,7 @@
 		<dependency>
 			<groupId>com.matteo</groupId>
 			<artifactId>HTTPServer</artifactId>
-			<version>3.2.4</version>
+			<version>3.2.5</version>
 		</dependency>
 		<dependency>
 			<groupId>commons-validator</groupId>
