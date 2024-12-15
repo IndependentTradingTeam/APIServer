@@ -393,6 +393,23 @@ public class ServerManager {
 				}
 			}
 		});
+
+		server.get("/api/checkLogin", (req, res) -> {
+			Session session = req.getSession();
+			session.start();
+			SessionVariable userID = session.getSessionVariable("userID");
+			if(userID != null) {
+				res.send("logged");
+			} else {
+				session.destroy();
+				res.send("not logged");
+			}
+		});
+
+		server.get("/api/logout", (req, res) -> {
+			Session session = req.getSession();
+			session.destroy();
+		});
 		
 		server.get("/api/getExchanges", (req, res) -> {
 			Connection conn = null;
@@ -471,6 +488,34 @@ public class ServerManager {
 			}
 		});
 		
+		server.get("/api/searchResources", (req, res) -> {
+			String query = req.getRequestParamValue("query");
+			if(query != null) {
+				ArrayList<Resource> resources = new ArrayList<Resource>();
+
+				Connection conn = null;
+				PreparedStatement stmt = null;
+				ResultSet rs = null;
+				try {
+					conn = Database.connect();
+					stmt = conn.prepareStatement("SELECT ID, Symbol, Nome, MIC_Borsa FROM Quotazioni JOIN Risorse ON Quotazioni.ID_Risorsa = Risorse.ID WHERE Risorse.Nome LIKE ?;");
+					stmt.setString(1, "%" + query + "%");
+					rs = stmt.executeQuery();
+					while(rs.next()) {
+						resources.add(new Resource(rs.getInt(1), rs.getString(2), rs.getString(3), rs.getString(4)));
+					}
+					res.status(200).send(resources);
+				} catch (SQLException e) {
+					res.status(500).send("Errore interno al database");
+					return;
+				} finally {
+					Database.closeConnection(conn, stmt, rs);
+				}
+			} else {
+				res.status(400).send("Parametro query assente");
+			}
+		});
+
 		server.get("/api/getResources", (req, res) -> {
 			String MIC = req.getRequestParamValue("MIC");
 			if(MIC != null) {
@@ -495,7 +540,7 @@ public class ServerManager {
 							int ID = rs.getInt(1);
 							String symbol =  rs.getString(2);
 							String name =  rs.getString(3);
-							exchanges.add(new Resource(ID, symbol, name));
+							exchanges.add(new Resource(ID, symbol, name, MIC));
 						} while (rs.next());
 						res.status(200).send(exchanges);
 					} else {
