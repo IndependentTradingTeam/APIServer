@@ -394,6 +394,18 @@ public class ServerManager {
 			}
 		});
 
+		server.get("/api/checkLogin", (req, res) -> {
+			Session session = req.getSession();
+			session.start();
+			SessionVariable userID = session.getSessionVariable("userID");
+			if(userID != null) {
+				res.send("logged");
+			} else {
+				session.destroy();
+				res.send("not logged");
+			}
+		});
+
 		server.get("/api/logout", (req, res) -> {
 			Session session = req.getSession();
 			session.destroy();
