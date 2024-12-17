@@ -8,6 +8,7 @@ public class Action {
     private int ID;
     private int Resource_ID;
     private String Resource_Symbol;
+    private String Resource_Name;
     private BigDecimal Quantity;
     private LocalDate BuyDate;
     private LocalTime BuyTime;
@@ -15,10 +16,11 @@ public class Action {
     private LocalTime EndTime;
     private boolean Finished;
     
-    public Action(int ID, int Resource_ID, String Resource_Symbol, BigDecimal Quantity, LocalDate BuyDate, LocalTime BuyTime, LocalDate EndDate, LocalTime EndTime) {
+    public Action(int ID, int Resource_ID, String Resource_Symbol, String Resource_Name, BigDecimal Quantity, LocalDate BuyDate, LocalTime BuyTime, LocalDate EndDate, LocalTime EndTime) {
         this.ID = ID;
         this.Resource_ID = Resource_ID;
         this.Resource_Symbol = Resource_Symbol;
+        this.Resource_Name = Resource_Name;
         this.Quantity = Quantity;
         this.BuyDate = BuyDate;
         this.BuyTime = BuyTime;
@@ -41,6 +43,10 @@ public class Action {
 
     public String getResource_Symbol() {
         return this.Resource_Symbol;
+    }
+
+    public String getResource_Name() {
+        return this.Resource_Name;
     }
 
     public BigDecimal getQuantity() {
