@@ -713,7 +713,7 @@ public class ServerManager {
 			}
 		});
 
-		server.get("/api/getBuyedActions", (req, res) -> {
+		server.get("/api/getBoughtActions", (req, res) -> {
 			Session session = req.getSession();
 			session.start();
 			session.disableExpiry();
@@ -726,7 +726,7 @@ public class ServerManager {
 				ArrayList<Action> actions = new ArrayList<Action>();
 				try {
 					conn = Database.connect();
-					stmt = conn.prepareStatement("SELECT Azioni.ID, ID_Risorsa, Risorse.Symbol, Quantità, DataOraAcquisto, DataOraFine FROM Azioni JOIN Risorse ON Azioni.ID_Risorsa = Risorse.ID WHERE ID_Utente = ?;");
+					stmt = conn.prepareStatement("SELECT Azioni.ID, ID_Risorsa, Risorse.Symbol, Risorse.Nome, Quantità, DataOraAcquisto, DataOraFine FROM Azioni JOIN Risorse ON Azioni.ID_Risorsa = Risorse.ID WHERE ID_Utente = ?;");
 					stmt.setInt(1, userID);
 					rs = stmt.executeQuery();
 					ZoneId zoneId = ZoneId.systemDefault();
@@ -734,9 +734,10 @@ public class ServerManager {
 						int idAzione = rs.getInt(1);
 						int idRisorsa = rs.getInt(2);
 						String symbol = rs.getString(3);
-						BigDecimal quantità = rs.getBigDecimal(4);
-						Timestamp DataOraAcquisto = rs.getTimestamp(5);
-						Timestamp DataOraFine = rs.getTimestamp(6);
+						String nome = rs.getString(4);
+						BigDecimal quantità = rs.getBigDecimal(5);
+						Timestamp DataOraAcquisto = rs.getTimestamp(6);
+						Timestamp DataOraFine = rs.getTimestamp(7);
 
 						// Converto i TimeStamp in LocalDate e LocalTime
 						Instant instant = DataOraAcquisto.toInstant();
@@ -750,7 +751,7 @@ public class ServerManager {
 							dataFine = instant.atZone(zoneId).toLocalDate();
 							oraFine = instant.atZone(zoneId).toLocalTime();
 						}
-						actions.add(new Action(idAzione, idRisorsa, symbol, quantità, dataAcquisto, oraAcquisto, dataFine, oraFine));
+						actions.add(new Action(idAzione, idRisorsa, symbol, nome, quantità, dataAcquisto, oraAcquisto, dataFine, oraFine));
 					}
 					res.status(200).send(actions);
 				} catch (SQLException e) {
