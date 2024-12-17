@@ -4,7 +4,7 @@
   <groupId>com.matteo</groupId>
   <artifactId>AppAPIserver</artifactId>
   <name>AppAPIserver</name>
-  <version>1.0.8</version>
+  <version>1.0.10</version>
   <description>A simple AppAPIserver.</description>
   <url>http://www.example.com</url>
   <build>
