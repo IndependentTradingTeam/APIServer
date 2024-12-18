@@ -411,6 +411,36 @@ public class ServerManager {
 			Session session = req.getSession();
 			session.destroy();
 		});
+
+		server.get("/api/deleteAccount", (req, res) -> {
+			boolean destroySession = false;
+			Session session = req.getSession();
+			session.start();
+			SessionVariable userID = session.getSessionVariable("userID");
+			if(userID != null) {
+				Connection conn = null;
+				PreparedStatement stmt = null;
+				try {
+					conn = Database.connect();
+					stmt = conn.prepareStatement("DELETE FROM Utenti WHERE ID = ?;");
+					stmt.setInt(1, (Integer)userID.getValue());
+					stmt.executeUpdate();
+					res.status(200).send("Utente eliminato correttamente");
+					destroySession = true;
+				} catch (SQLException e) {
+					res.status(500).send("Si è verificato un errore interno al database");
+				} finally {
+					Database.closeConnection(conn, stmt);
+				}
+			} else {
+				destroySession = true;
+				res.status(401).send("Non è stato effettutato il login");
+			}
+
+			if(destroySession) {
+				session.destroy();
+			}
+		});
 		
 		server.get("/api/getExchanges", (req, res) -> {
 			Connection conn = null;
